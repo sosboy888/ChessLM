@@ -1,0 +1,4 @@
+numpy
+zstandard
+python-chess
+# torch: install the CUDA build from pytorch.org

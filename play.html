@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chessLM</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #14161a; --panel: #1d2026; --line: #2c313a; --text: #e8eaed; --muted: #9aa0a6;
+    --accent: #7fb069; --bad: #e5736b;
+    --light: #ead9b5; --dark: #b58863;
+    --board: min(92vw, 560px);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; padding: 24px 16px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+  .sub { margin: 2px 0 14px; color: var(--muted); font-size: 13px; }
+
+  #board { position: relative; display: grid;
+           grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr));
+           width: var(--board); height: var(--board); border-radius: 6px; overflow: hidden;
+           box-shadow: 0 6px 24px rgba(0,0,0,.45); user-select: none; }
+  #board.busy { opacity: .75; pointer-events: none; }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center; cursor: default;
+        min-width: 0; min-height: 0; overflow: hidden; }
+  .sq.light { background: var(--light); } .sq.dark { background: var(--dark); }
+  .sq.last::before { content: ""; position: absolute; inset: 0; background: rgba(155,199,0,.42); }
+  .sq.sel::before { content: ""; position: absolute; inset: 0; background: rgba(255,214,10,.6); }
+  .sq.check::before { content: ""; position: absolute; inset: 0;
+                      background: radial-gradient(circle, rgba(229,60,50,.85) 0%, rgba(229,60,50,0) 72%); }
+  .sq.mine { cursor: pointer; }
+  .sq.target { cursor: pointer; }
+  .sq.target::after { content: ""; position: absolute; width: 28%; height: 28%; border-radius: 50%;
+                      background: rgba(20,20,20,.28); }
+  .sq.target.cap::after { width: 90%; height: 90%; background: none; border: 5px solid rgba(20,20,20,.28); }
+  .pc { position: relative; z-index: 1; font-size: calc(var(--board) / 8 * .8); line-height: 1;
+        font-family: "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols 2", serif; }
+  .pc.w { color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000, 0 1px 3px rgba(0,0,0,.7); }
+  .pc.b { color: #151515; text-shadow: 0 0 1px rgba(255,255,255,.35); }
+  .coord { position: absolute; z-index: 2; font-size: 11px; font-weight: 600; opacity: .75; pointer-events: none; }
+  .sq.light .coord { color: var(--dark); } .sq.dark .coord { color: var(--light); }
+  .coord.file { right: 4px; bottom: 2px; } .coord.rank { left: 4px; top: 2px; }
+
+  #status { margin-top: 12px; min-height: 26px; font-weight: 600; width: var(--board); }
+  #status.err { color: var(--bad); } #status.over { color: var(--accent); }
+
+  aside { width: min(92vw, 360px); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .card h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .row label { color: var(--muted); font-size: 13px; min-width: 92px; }
+  button, select { background: #272c35; color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+                   padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: #46505f; }
+  button.primary { background: #3b5b34; border-color: #4d7a43; }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=range] { flex: 1; min-width: 100px; accent-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+
+  #moves { max-height: 150px; overflow: auto; font-variant-numeric: tabular-nums; display: grid;
+           grid-template-columns: 32px 1fr 1fr; gap: 2px 8px; font-size: 14px; }
+  #moves .n { color: var(--muted); }
+  #moves .cur { color: var(--accent); font-weight: 600; }
+
+  .cand { display: grid; grid-template-columns: 62px 1fr 46px; gap: 8px; align-items: center; margin: 4px 0; font-size: 14px; }
+  .bar { height: 8px; background: #2a2f38; border-radius: 4px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  .pct { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .note { margin-top: 8px; font-size: 13px; color: #e8c07a; }
+  .stat { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; }
+  .stat span:first-child { color: var(--muted); }
+
+  .promo { position: absolute; inset: 0; z-index: 5; background: rgba(0,0,0,.55); display: none;
+           align-items: center; justify-content: center; gap: 10px; }
+  .promo.on { display: flex; }
+  .promo button { font-size: 38px; padding: 6px 14px; line-height: 1.1;
+                  font-family: "Segoe UI Symbol", "DejaVu Sans", serif; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <div id="boardwrap" style="position:relative">
+      <div id="board"></div>
+      <div class="promo" id="promo"></div>
+    </div>
+    <div id="status">Loading…</div>
+  </section>
+
+  <aside>
+    <h1>chessLM</h1>
+    <p class="sub" id="modelinfo">&nbsp;</p>
+
+    <div class="card">
+      <h2>Game</h2>
+      <div class="row">
+        <label for="color">You play</label>
+        <select id="color"><option value="w">White</option><option value="b">Black</option></select>
+        <button class="primary" id="btnNew">New game</button>
+        <button id="btnUndo">Undo</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>How the model picks its move</h2>
+      <div class="row">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="free">Free (may play illegal moves, retries)</option>
+          <option value="legal">Legal only (scores each legal move)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="temp">Temperature</label>
+        <input type="range" id="temp" min="0" max="1.5" step="0.1" value="0.5">
+        <span id="tempval">0.5</span>
+      </div>
+      <p class="hint">Low temperature = most likely move every time. High = more varied, more mistakes.</p>
+    </div>
+
+    <div class="card">
+      <h2>Moves</h2>
+      <div id="moves"></div>
+    </div>
+
+    <div class="card">
+      <h2>What the model thought</h2>
+      <div id="cands"><span class="hint">Make a move to see how the model ranks its options.</span></div>
+      <div class="note" id="note"></div>
+    </div>
+
+    <div class="card">
+      <h2>Rule-following (free mode)</h2>
+      <div id="stats"></div>
+      <p class="hint">Counts only the model's own first guess. Illegal guesses are retried; after 5 failures it falls back to its best legal move.</p>
+    </div>
+  </aside>
+</main>
+
+<script>
+const GLYPH = {k:"♚", q:"♛", r:"♜", b:"♝", n:"♞", p:"♟"};
+const VS15 = "︎";   // force text (not emoji) rendering of the glyphs
+const FILES = "abcdefgh";
+let S = null, selected = null, busy = false, pending = null;
+
+const $ = id => document.getElementById(id);
+
+// show any unexpected page error on screen instead of failing silently
+function showError(msg) { const st = $("status"); st.className = "err"; st.textContent = "Page error: " + msg; }
+window.addEventListener("error", e => showError(e.message));
+window.addEventListener("unhandledrejection", e => showError((e.reason && e.reason.message) || e.reason));
+
+async function api(path, body) {
+  const opts = body === undefined ? undefined :
+    {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function parseFen(fen) {
+  return fen.split(" ")[0].split("/").map(row => {
+    const out = [];
+    for (const ch of row) { if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) out.push(null); else out.push(ch); }
+    return out;
+  });
+}
+
+function renderBoard() {
+  const grid = parseFen(S.fen);
+  const flip = S.user === "b";
+  const tgt = (selected && S.legal[selected]) || [];
+  let html = "";
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 8; j++) {
+      const r = flip ? 7 - i : i, c = flip ? 7 - j : j;
+      const name = FILES[c] + (8 - r);
+      const p = grid[r][c];
+      const cls = ["sq", (r + c) % 2 === 0 ? "light" : "dark"];
+      if (S.last_move && S.last_move.includes(name)) cls.push("last");
+      if (selected === name) cls.push("sel");
+      if (S.check === name) cls.push("check");
+      if (tgt.includes(name)) { cls.push("target"); if (p) cls.push("cap"); }
+      if (S.legal[name]) cls.push("mine");
+      html += `<div class="${cls.join(" ")}" data-sq="${name}">`;
+      if (j === 0) html += `<span class="coord rank">${8 - r}</span>`;
+      if (i === 7) html += `<span class="coord file">${FILES[c]}</span>`;
+      if (p) html += `<span class="pc ${p === p.toUpperCase() ? "w" : "b"}">${GLYPH[p.toLowerCase()]}${VS15}</span>`;
+      html += `</div>`;
+    }
+  }
+  $("board").innerHTML = html;
+}
+
+function renderPanels() {
+  // status line
+  const st = $("status");
+  st.className = "";
+  let text;
+  if (S.over) { text = S.status || "The game is over."; st.className = "over"; }
+  else if (busy) text = "Model is thinking…";
+  else if (S.my_turn) text = S.check ? "Check! Your move." : "Your move.";
+  else text = "Waiting…";
+  if (S.last && S.last.note && !S.last.candidates && !S.last.played) text = S.last.note;
+  st.textContent = text;
+
+  $("modelinfo").textContent =
+    `${S.model.name} · ${S.model.params_m}M parameters · ${S.model.device} · context ${S.prompt_chars}/${S.model.context} chars`;
+  $("mode").value = S.settings.mode;
+  $("temp").value = S.settings.temperature;
+  $("tempval").textContent = Number(S.settings.temperature).toFixed(1);
+  $("btnUndo").disabled = busy || S.san.length === 0;
+
+  // move list
+  let mh = "";
+  for (let i = 0; i < S.san.length; i += 2) {
+    const lastIdx = S.san.length - 1;
+    mh += `<span class="n">${i / 2 + 1}.</span>` +
+          `<span class="${i === lastIdx ? "cur" : ""}">${S.san[i]}</span>` +
+          `<span class="${i + 1 === lastIdx ? "cur" : ""}">${S.san[i + 1] || ""}</span>`;
+  }
+  $("moves").innerHTML = mh || `<span class="hint" style="grid-column:1/-1">No moves yet.</span>`;
+  $("moves").scrollTop = $("moves").scrollHeight;
+
+  // candidates
+  const L = S.last || {};
+  if (L.candidates) {
+    $("cands").innerHTML =
+      `<div class="hint" style="margin:0 0 6px">Top legal moves (probabilities renormalised over legal moves). It played <b>${L.played}</b>.</div>` +
+      L.candidates.map(c =>
+        `<div class="cand"><span>${c.san}</span><div class="bar"><i style="width:${(c.p * 100).toFixed(1)}%"></i></div>` +
+        `<span class="pct">${(c.p * 100).toFixed(0)}%</span></div>`).join("");
+  } else {
+    $("cands").innerHTML = `<span class="hint">Make a move to see how the model ranks its options.</span>`;
+  }
+  $("note").textContent = L.note || "";
+
+  // stats
+  const s = S.stats;
+  $("stats").innerHTML = s.turns === 0
+    ? `<span class="hint">No free-mode moves yet.</span>`
+    : `<div class="stat"><span>Legal on first try</span><span>${s.first_try} / ${s.turns} (${Math.round(100 * s.first_try / s.turns)}%)</span></div>` +
+      `<div class="stat"><span>Illegal guesses</span><span>${s.illegal}</span></div>` +
+      `<div class="stat"><span>Fell back to best legal</span><span>${s.fallbacks}</span></div>`;
+}
+
+function render() { renderBoard(); renderPanels(); }
+
+function setBusy(b) { busy = b; $("board").classList.toggle("busy", b); }
+
+async function run(fn) {
+  setBusy(true); if (S) renderPanels();   // S is null on the very first call
+  try { S = await fn(); selected = null; $("color").value = S.user; }   // dropdown shows the current game's colour
+  catch (e) { const st = $("status"); st.className = "err"; st.textContent = e.message; }
+  setBusy(false); render();
+}
+
+function onSquare(sq) {
+  if (busy || !S.my_turn) return;
+  if (selected && (S.legal[selected] || []).includes(sq)) {
+    if (S.promos.includes(selected + sq)) { pending = {from: selected, to: sq}; showPromo(); return; }
+    return sendMove(selected, sq);
+  }
+  selected = S.legal[sq] ? sq : null;
+  render();
+}
+
+function sendMove(from, to, promotion) {
+  const body = {from, to}; if (promotion) body.promotion = promotion;
+  return run(() => api("/api/move", body));
+}
+
+function showPromo() {
+  const col = S.user === "w" ? "#fff" : "#151515";
+  $("promo").innerHTML = ["q", "r", "b", "n"].map(p =>
+    `<button data-p="${p}" style="color:${col};text-shadow:0 0 2px #000">${GLYPH[p]}${VS15}</button>`).join("");
+  $("promo").classList.add("on");
+}
+
+$("promo").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || !pending) return;
+  const m = pending; pending = null; $("promo").classList.remove("on");
+  sendMove(m.from, m.to, b.dataset.p);
+});
+$("board").addEventListener("click", e => { const sq = e.target.closest(".sq"); if (sq) onSquare(sq.dataset.sq); });
+$("btnNew").onclick = () => {
+  const color = $("color").value;   // read before run() re-renders anything
+  pending = null; $("promo").classList.remove("on");
+  run(() => api("/api/new", {color}));
+};
+$("btnUndo").onclick = () => run(() => api("/api/undo", {}));
+$("mode").onchange = () => api("/api/settings", {mode: $("mode").value}).then(s => { S = s; render(); });
+$("temp").oninput = () => { $("tempval").textContent = Number($("temp").value).toFixed(1); };
+$("temp").onchange = () => api("/api/settings", {temperature: Number($("temp").value)}).then(s => { S = s; render(); });
+
+run(() => api("/api/state"));
+</script>
+</body>
+</html>
