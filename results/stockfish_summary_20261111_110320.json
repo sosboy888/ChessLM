@@ -1,0 +1,54 @@
+{
+  "model": "base_final.pt",
+  "stockfish": "e:\\myLab\\sosLM\\chessLM\\tools\\stockfish\\stockfish\\stockfish-windows-x86-64-universal.exe",
+  "movetime": 0.1,
+  "policy": "free",
+  "temperature": 0.5,
+  "opponents": [
+    {
+      "opponent": "Random mover",
+      "spec": "random",
+      "games": 40,
+      "wins": 24,
+      "draws": 16,
+      "losses": 0,
+      "score": 0.8,
+      "legal_first_try": 0.7931034482758621,
+      "model_moves": 1450,
+      "illegal_first": 300,
+      "fallbacks": 78,
+      "adjudicated": 0,
+      "mean_plies": 76.05
+    },
+    {
+      "opponent": "Stockfish skill 0",
+      "spec": "skill:0",
+      "games": 40,
+      "wins": 2,
+      "draws": 6,
+      "losses": 32,
+      "score": 0.125,
+      "legal_first_try": 0.9298584298584298,
+      "model_moves": 1554,
+      "illegal_first": 109,
+      "fallbacks": 25,
+      "adjudicated": 0,
+      "mean_plies": 82.025
+    },
+    {
+      "opponent": "Stockfish ~1320 Elo",
+      "spec": "elo:1320",
+      "games": 40,
+      "wins": 1,
+      "draws": 4,
+      "losses": 35,
+      "score": 0.075,
+      "legal_first_try": 0.9466237942122186,
+      "model_moves": 1555,
+      "illegal_first": 83,
+      "fallbacks": 23,
+      "adjudicated": 0,
+      "mean_plies": 82.125
+    }
+  ]
+}
